@@ -193,6 +193,9 @@ fn apply_account_credentials(
                 let _ = device::write_profile(&storage_path, profile);
             }
         }
+
+        // 2.3 同步 Antigravity 客户端 UI 缓存用户名 (app_storage.json)
+        sync_app_storage_account(&account.email, effective_target);
     } else {
         // ================== 原有 Antigravity 旧版或定制 IDE 逻辑 (< 2.0.0) ==================
         // 2.1 获取存储路径
@@ -202,6 +205,9 @@ fn apply_account_credentials(
         if let Some(ref profile) = account.device_profile {
             device::write_profile(&storage_path, profile)?;
         }
+
+        // 2.2.1 同步客户端 UI 缓存用户名
+        sync_app_storage_account(&account.email, effective_target);
 
         // 2.3 数据库处理与 Token 注入
         let db_path = db::get_db_path(effective_target)?;
@@ -913,12 +919,127 @@ fn write_to_file_credentials(
         }
     }
 
+    // 3. 同步写入 Antigravity 2.x 独立客户端凭据 (~/.gemini/jetski-standalone-oauth-token)
+    // 供 Antigravity Standalone 2.27.0+ 语言服务引擎 (language_server --standalone) 认证
+    #[derive(serde::Serialize)]
+    struct StandaloneTokenDetails {
+        access_token: String,
+        token_type: String,
+        refresh_token: String,
+        expiry: String,
+        expires_in: i64,
+    }
+
+    #[derive(serde::Serialize)]
+    struct StandaloneTokenFile {
+        token: StandaloneTokenDetails,
+        auth_method: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id_token_email: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id_token: Option<String>,
+    }
+
+    let expiry_rfc3339 = {
+        let expiry_secs = if account.token.expiry_timestamp > 10_000_000_000 {
+            account.token.expiry_timestamp / 1000
+        } else {
+            account.token.expiry_timestamp
+        };
+        let expiry_datetime = chrono::DateTime::from_timestamp(expiry_secs, 0)
+            .unwrap_or_else(|| chrono::Utc::now());
+        expiry_datetime.to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
+    };
+
+    let standalone_token = StandaloneTokenFile {
+        token: StandaloneTokenDetails {
+            access_token: account.token.access_token.clone(),
+            token_type: "Bearer".to_string(),
+            refresh_token: account.token.refresh_token.clone(),
+            expiry: expiry_rfc3339,
+            expires_in: 3599,
+        },
+        auth_method: "consumer".to_string(),
+        id_token_email: Some(account.email.clone()),
+        id_token: account.token.id_token.clone(),
+    };
+
+    let standalone_path = gemini_dir.join("jetski-standalone-oauth-token");
+    if let Ok(token_str) = serde_json::to_string(&standalone_token) {
+        if std::fs::write(&standalone_path, token_str).is_ok() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&standalone_path, std::fs::Permissions::from_mode(0o600));
+            }
+            crate::modules::logger::log_info(&format!(
+                "[Desktop] Successfully synced standalone credentials to ~/.gemini/jetski-standalone-oauth-token for: {}",
+                account.email
+            ));
+        }
+    }
+
     crate::modules::logger::log_info(&format!(
         "[Desktop] Successfully synced file-based credentials to ~/.gemini/oauth_creds.json for: {}",
         account.email
     ));
 
     Ok(())
+}
+
+/// 同步更新 Antigravity 客户端界面的当前登录用户记录 (app_storage.json -> jetski.onboarding.lastLoginUsername)
+fn sync_app_storage_account(email: &str, target_ide: Option<&str>) {
+    let folder_names: &[&str] = if target_ide == Some("ide") {
+        &["Antigravity IDE", "antigravity-ide", "AntigravityIDE"]
+    } else {
+        &["Antigravity", "antigravity"]
+    };
+
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(p) = process::get_user_data_dir_from_process(target_ide) {
+        dirs.push(p);
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(home) = dirs::home_dir() {
+        for f in folder_names {
+            dirs.push(home.join("Library/Application Support").join(f));
+        }
+    }
+    #[cfg(target_os = "windows")]
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        for f in folder_names {
+            dirs.push(std::path::PathBuf::from(&appdata).join(f));
+        }
+    }
+    #[cfg(target_os = "linux")]
+    if let Some(home) = dirs::home_dir() {
+        for f in folder_names {
+            dirs.push(home.join(".config").join(f));
+        }
+    }
+
+    for dir in dirs {
+        let app_storage_path = dir.join("app_storage.json");
+        if app_storage_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&app_storage_path) {
+                if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(obj) = json.as_object_mut() {
+                        obj.insert(
+                            "jetski.onboarding.lastLoginUsername".to_string(),
+                            serde_json::Value::String(email.to_string()),
+                        );
+                        if let Ok(new_content) = serde_json::to_string_pretty(&json) {
+                            let _ = std::fs::write(&app_storage_path, new_content);
+                            crate::modules::logger::log_info(&format!(
+                                "[Desktop] Synced lastLoginUsername to {:?}",
+                                app_storage_path
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// 辅助方法：从本地文件凭据读取 Token 作为跨平台回退
