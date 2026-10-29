@@ -325,8 +325,21 @@ impl SystemIntegration for DesktopIntegration {
         let mut hot_switch = false;
         let mut credentials_applied = false;
 
-        // 仅原生经典版（!is_ide）且运行中时尝试热切号
-        if !is_ide && running {
+        let is_standalone_gte_2_27 = if !is_ide {
+            version::get_antigravity_version_with_path(
+                effective_target,
+                active_exe_path.as_deref(),
+            )
+            .map(|v| version::compare_version(&v.short_version, "2.27.0") != std::cmp::Ordering::Less)
+            .unwrap_or(false)
+        } else {
+            false
+        };
+
+        // 仅原生经典版早期版本（!is_ide && !is_standalone_gte_2_27）且运行中时尝试热切号。
+        // 注意：Antigravity Standalone 从 2.27.0 / 2.28.0 起，主进程持有独立内存会话与 StorageManager，
+        // 单杀语言服务无法让桌面端重载新账号，且容易导致关闭时旧凭据回写覆盖；故 2.27.0+ 必须完整重启。
+        if !is_ide && running && !is_standalone_gte_2_27 {
             apply_account_credentials(
                 account,
                 effective_target,
@@ -373,6 +386,11 @@ impl SystemIntegration for DesktopIntegration {
         }
 
         if !hot_switch && running {
+            if is_standalone_gte_2_27 {
+                crate::modules::logger::log_info(
+                    "[Desktop] Antigravity version >= 2.27.0 detected; performing atomic full restart to cleanly reload Electron session.",
+                );
+            }
             process::close_antigravity(20, effective_target)?;
             // 完整重启路径必须在彻底终止主进程之后重新断言写入凭据，
             // 消除外部客户端退出钩子在关机瞬间回写陈旧 Session Token 的竞态
@@ -965,18 +983,31 @@ fn write_to_file_credentials(
     };
 
     let standalone_path = gemini_dir.join("jetski-standalone-oauth-token");
-    if let Ok(token_str) = serde_json::to_string(&standalone_token) {
-        if std::fs::write(&standalone_path, token_str).is_ok() {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(&standalone_path, std::fs::Permissions::from_mode(0o600));
+    match serde_json::to_string_pretty(&standalone_token) {
+        Ok(token_str) => match std::fs::write(&standalone_path, token_str) {
+            Ok(_) => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(
+                        &standalone_path,
+                        std::fs::Permissions::from_mode(0o600),
+                    );
+                }
+                crate::modules::logger::log_info(&format!(
+                    "[Desktop] Successfully synced standalone credentials to ~/.gemini/jetski-standalone-oauth-token for: {}",
+                    account.email
+                ));
             }
-            crate::modules::logger::log_info(&format!(
-                "[Desktop] Successfully synced standalone credentials to ~/.gemini/jetski-standalone-oauth-token for: {}",
-                account.email
-            ));
-        }
+            Err(e) => crate::modules::logger::log_warn(&format!(
+                "[Desktop] Failed to write jetski-standalone-oauth-token: {}",
+                e
+            )),
+        },
+        Err(e) => crate::modules::logger::log_warn(&format!(
+            "[Desktop] Failed to serialize jetski-standalone-oauth-token: {}",
+            e
+        )),
     }
 
     crate::modules::logger::log_info(&format!(
@@ -987,8 +1018,13 @@ fn write_to_file_credentials(
     Ok(())
 }
 
-/// 同步更新 Antigravity 客户端界面的当前登录用户记录 (app_storage.json -> jetski.onboarding.lastLoginUsername)
-fn sync_app_storage_account(email: &str, target_ide: Option<&str>) {
+/// 解析 Antigravity 客户端 app_storage.json 的候选目录（写入与探测共用，避免读写路径不对称）
+///
+/// 顺序：正在运行的进程实际 `--user-data-dir`（便携模式）→ 平台固定目录。
+/// `target_ide == Some("ide")` 时使用 IDE 款目录名，否则使用经典款目录名。
+pub(crate) fn app_storage_candidate_dirs(
+    target_ide: Option<&str>,
+) -> Vec<std::path::PathBuf> {
     let folder_names: &[&str] = if target_ide == Some("ide") {
         &["Antigravity IDE", "antigravity-ide", "AntigravityIDE"]
     } else {
@@ -1017,27 +1053,78 @@ fn sync_app_storage_account(email: &str, target_ide: Option<&str>) {
             dirs.push(home.join(".config").join(f));
         }
     }
+    dirs
+}
 
-    for dir in dirs {
+/// 探测侧使用：无 target 上下文时同时覆盖经典款与 IDE 款目录，按出现顺序去重
+pub(crate) fn app_storage_probe_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs = app_storage_candidate_dirs(None);
+    dirs.extend(app_storage_candidate_dirs(Some("ide")));
+    let mut seen = std::collections::HashSet::new();
+    dirs.retain(|d| seen.insert(d.clone()));
+    dirs
+}
+
+/// 同步更新 Antigravity 客户端界面的当前登录用户记录 (app_storage.json -> jetski.onboarding.lastLoginUsername)
+fn sync_app_storage_account(email: &str, target_ide: Option<&str>) {
+    for dir in app_storage_candidate_dirs(target_ide) {
         let app_storage_path = dir.join("app_storage.json");
-        if app_storage_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&app_storage_path) {
-                if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(obj) = json.as_object_mut() {
-                        obj.insert(
-                            "jetski.onboarding.lastLoginUsername".to_string(),
-                            serde_json::Value::String(email.to_string()),
-                        );
-                        if let Ok(new_content) = serde_json::to_string_pretty(&json) {
-                            let _ = std::fs::write(&app_storage_path, new_content);
-                            crate::modules::logger::log_info(&format!(
-                                "[Desktop] Synced lastLoginUsername to {:?}",
-                                app_storage_path
-                            ));
-                        }
-                    }
-                }
+        if !app_storage_path.exists() {
+            continue;
+        }
+        let content = match std::fs::read_to_string(&app_storage_path) {
+            Ok(c) => c,
+            Err(e) => {
+                crate::modules::logger::log_warn(&format!(
+                    "[Desktop] Failed to read {:?}: {}",
+                    app_storage_path, e
+                ));
+                continue;
             }
+        };
+        let mut json: serde_json::Value = match serde_json::from_str(&content) {
+            Ok(v) => v,
+            Err(e) => {
+                crate::modules::logger::log_warn(&format!(
+                    "[Desktop] Failed to parse {:?}: {}",
+                    app_storage_path, e
+                ));
+                continue;
+            }
+        };
+        let obj = match json.as_object_mut() {
+            Some(o) => o,
+            None => {
+                crate::modules::logger::log_warn(&format!(
+                    "[Desktop] Unexpected non-object app_storage.json: {:?}",
+                    app_storage_path
+                ));
+                continue;
+            }
+        };
+        obj.insert(
+            "jetski.onboarding.lastLoginUsername".to_string(),
+            serde_json::Value::String(email.to_string()),
+        );
+        let new_content = match serde_json::to_string_pretty(&json) {
+            Ok(c) => c,
+            Err(e) => {
+                crate::modules::logger::log_warn(&format!(
+                    "[Desktop] Failed to serialize {:?}: {}",
+                    app_storage_path, e
+                ));
+                continue;
+            }
+        };
+        match std::fs::write(&app_storage_path, new_content) {
+            Ok(_) => crate::modules::logger::log_info(&format!(
+                "[Desktop] Synced lastLoginUsername to {:?}",
+                app_storage_path
+            )),
+            Err(e) => crate::modules::logger::log_warn(&format!(
+                "[Desktop] Failed to write {:?}: {}",
+                app_storage_path, e
+            )),
         }
     }
 }
@@ -1077,10 +1164,17 @@ fn read_from_file_credentials() -> Result<crate::modules::migration::ImportedOAu
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Refresh token not found in oauth_creds.json".to_string())?
         .to_string();
+    let email = json
+        .get("id_token_email")
+        .or_else(|| json.get("email"))
+        .or_else(|| json.get("token").and_then(|t| t.get("id_token_email")))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     Ok(crate::modules::migration::ImportedOAuthState {
         refresh_token,
         is_gcp_tos: true,
         project_id: None,
+        email,
     })
 }
 
@@ -1296,7 +1390,7 @@ fn read_system_credentials(
     }
 }
 
-fn parse_keyring_payload(
+pub(crate) fn parse_keyring_payload(
     payload_str: &str,
 ) -> Result<crate::modules::migration::ImportedOAuthState, String> {
     let json: serde_json::Value = serde_json::from_str(payload_str)
@@ -1310,10 +1404,18 @@ fn parse_keyring_payload(
         .ok_or_else(|| "Refresh Token not found in keyring payload".to_string())?
         .to_string();
 
+    let email = json
+        .get("id_token_email")
+        .or_else(|| json.get("email"))
+        .or_else(|| json.get("token").and_then(|t| t.get("id_token_email")))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     Ok(crate::modules::migration::ImportedOAuthState {
         refresh_token,
         is_gcp_tos: true,
         project_id: None,
+        email,
     })
 }
 
@@ -1380,7 +1482,7 @@ impl SystemIntegration for CliIntegration {
         let ide_exe = process::get_antigravity_executable_path(Some("ide"));
         let ide_exe_str = ide_exe.as_ref().map(|p| p.to_string_lossy().to_string());
 
-        let (_is_ide, effective_target) = resolve_effective_target(
+        let (is_ide, effective_target) = resolve_effective_target(
             target_ide,
             classic_running,
             ide_running,
@@ -1388,23 +1490,50 @@ impl SystemIntegration for CliIntegration {
             ide_exe_str.as_deref(),
         );
 
-        let _ = write_to_system_keyring(account);
-        if let Ok(db_path) = db::get_db_path(effective_target) {
-            if db_path.exists() {
-                let _ = db::inject_token(
-                    &db_path,
-                    &account.token.access_token,
-                    &account.token.refresh_token,
-                    account.token.expiry_timestamp,
-                    &account.email,
-                    account.token.is_gcp_tos,
-                    account.token.project_id.as_deref(),
-                    account.token.id_token.as_deref(),
-                    account.token.oauth_client_key.as_deref(),
+        let active_exe_path = process::get_antigravity_executable_path(effective_target);
+        let active_args = process::get_args_from_running_process(effective_target);
+
+        apply_account_credentials(
+            account,
+            effective_target,
+            is_ide,
+            active_exe_path.as_deref(),
+        )?;
+
+        // 与 Desktop 侧保持一致：只按最终生效目标判定运行状态。
+        // 若用 classic_running || ide_running，则当 effective_target 为 classic 而仅 IDE 在运行时
+        // 会误判为 running，进而对 classic 目标执行 close_antigravity。
+        let running = process::is_antigravity_running(effective_target);
+        let is_standalone_gte_2_27 = if !is_ide {
+            version::get_antigravity_version_with_path(
+                effective_target,
+                active_exe_path.as_deref(),
+            )
+            .map(|v| version::compare_version(&v.short_version, "2.27.0") != std::cmp::Ordering::Less)
+            .unwrap_or(false)
+        } else {
+            false
+        };
+
+        if running {
+            if !is_ide && !is_standalone_gte_2_27 {
+                let _ = process::kill_language_server_subprocesses(effective_target);
+            } else {
+                let _ = process::close_antigravity(20, effective_target);
+                let _ = apply_account_credentials(
+                    account,
                     effective_target,
+                    is_ide,
+                    active_exe_path.as_deref(),
+                );
+                let _ = process::start_antigravity_with_fallback_path(
+                    effective_target,
+                    active_exe_path.as_deref(),
+                    active_args.as_deref(),
                 );
             }
         }
+
         Ok(())
     }
 

@@ -11,6 +11,7 @@ pub struct ImportedOAuthState {
     pub refresh_token: String,
     pub is_gcp_tos: bool,
     pub project_id: Option<String>,
+    pub email: Option<String>,
 }
 
 /// Scan and import V1 data
@@ -498,6 +499,7 @@ pub fn extract_oauth_state_from_file(db_path: &PathBuf) -> Result<ImportedOAuthS
             refresh_token,
             is_gcp_tos,
             project_id,
+            email: None,
         });
     }
 
@@ -535,6 +537,7 @@ pub fn extract_oauth_state_from_file(db_path: &PathBuf) -> Result<ImportedOAuthS
         refresh_token,
         is_gcp_tos: true,
         project_id: extract_enterprise_project_id_from_conn(&conn)?,
+        email: None,
     })
 }
 

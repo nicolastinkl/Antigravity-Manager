@@ -2501,6 +2501,17 @@ pub fn detect_active_clients_status() -> Result<crate::models::ActiveClientsStat
             .map(|s| s.email.clone())
     };
 
+    let find_by_email = |email: &str| -> Option<(String, String)> {
+        if email.is_empty() {
+            return None;
+        }
+        index
+            .accounts
+            .iter()
+            .find(|s| s.email.eq_ignore_ascii_case(email))
+            .map(|s| (s.id.clone(), s.email.clone()))
+    };
+
     let find_by_rt = |rt: &str| -> Option<(String, String)> {
         if rt.is_empty() {
             return None;
@@ -2532,13 +2543,22 @@ pub fn detect_active_clients_status() -> Result<crate::models::ActiveClientsStat
         None
     };
 
+    let find_by_state = |st: &crate::modules::migration::ImportedOAuthState| -> Option<(String, String)> {
+        if let Some(ref email) = st.email {
+            if let Some(res) = find_by_email(email) {
+                return Some(res);
+            }
+        }
+        find_by_rt(&st.refresh_token)
+    };
+
     // 1. 探测 IDE 款当前账号 (state.vscdb)
     if let Ok(db_path) = crate::modules::db::get_db_path(Some("ide")) {
         if db_path.exists() {
             if let Ok(oauth_state) =
                 crate::modules::migration::extract_oauth_state_from_file(&db_path)
             {
-                if let Some((acc_id, acc_email)) = find_by_rt(&oauth_state.refresh_token) {
+                if let Some((acc_id, acc_email)) = find_by_state(&oauth_state) {
                     status.ide_account_id = Some(acc_id);
                     status.ide_email = Some(acc_email);
                 }
@@ -2562,19 +2582,44 @@ pub fn detect_active_clients_status() -> Result<crate::models::ActiveClientsStat
     // 系统钥匙串（Keyring / Secret Service）：Antigravity 2.0+ 原生经典款与 CLI 共享的核心凭据
     let keyring_acc = crate::modules::integration::read_from_system_keyring_only()
         .ok()
-        .and_then(|st| find_by_rt(&st.refresh_token));
+        .and_then(|st| find_by_state(&st));
+
+    // Standalone 2.27.0+ 独立凭据 (~/.gemini/jetski-standalone-oauth-token)
+    let standalone_file_acc = dirs::home_dir()
+        .map(|h| h.join(".gemini").join("jetski-standalone-oauth-token"))
+        .filter(|p| p.exists())
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|content| crate::modules::integration::parse_keyring_payload(&content).ok())
+        .and_then(|st| find_by_state(&st));
+
+    // Antigravity 客户端 UI 存储 (app_storage.json -> jetski.onboarding.lastLoginUsername)
+    // 与写入侧共用 app_storage_candidate_dirs，覆盖便携模式 --user-data-dir 与 IDE 款目录
+    let app_storage_acc = crate::modules::integration::app_storage_probe_dirs()
+        .into_iter()
+        .map(|d| d.join("app_storage.json"))
+        .find(|p| p.exists())
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|v| {
+            v.get("jetski.onboarding.lastLoginUsername")
+                .and_then(|u| u.as_str())
+                .map(|s| s.to_string())
+        })
+        .and_then(|email| find_by_email(&email));
+
+    let effective_classic_acc = keyring_acc.clone().or(standalone_file_acc).or(app_storage_acc);
 
     // CLI 专属独立文件凭据 (~/.gemini/antigravity-cli/antigravity-oauth-token)
     let cli_file_acc = crate::modules::integration::read_antigravity_cli_credentials()
         .first()
-        .and_then(|st| find_by_rt(&st.refresh_token));
+        .and_then(|st| find_by_state(st));
 
     // 经典款旧版 SQLite 数据库 (Antigravity < 2.0.0)
     let classic_db_acc = crate::modules::db::get_db_path(Some("classic"))
         .ok()
         .filter(|p| p.exists())
         .and_then(|p| crate::modules::migration::extract_oauth_state_from_file(&p).ok())
-        .and_then(|st| find_by_rt(&st.refresh_token));
+        .and_then(|st| find_by_state(&st));
 
     // 判断经典款是否为 2.0+ 原生版本（>= 2.0.0 使用 Keyring，< 2.0.0 使用 SQLite）
     let is_classic_v2 =
@@ -2587,7 +2632,7 @@ pub fn detect_active_clients_status() -> Result<crate::models::ActiveClientsStat
 
     // 3. 确定经典款当前账号
     if is_classic_v2 {
-        if let Some((ref k_id, ref k_email)) = keyring_acc {
+        if let Some((ref k_id, ref k_email)) = effective_classic_acc {
             if index.current_target_ide.as_deref() != Some("agy")
                 || index.current_classic_account_id.as_deref() == Some(k_id)
             {
