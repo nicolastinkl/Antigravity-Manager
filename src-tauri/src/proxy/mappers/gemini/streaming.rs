@@ -73,13 +73,24 @@ impl ProtocolStreamHandler for GeminiStreamHandler {
         }
     }
 
-    fn process_line(&mut self, line: &str) -> Vec<Bytes> {
-        if !line.starts_with("data: ") {
-            // 注释行 / 非数据行原样透传
-            return vec![Bytes::from(format!("{}\n\n", line))];
-        }
+    fn heartbeat_frame(&mut self) -> Bytes {
+        // [对齐 Gemini 官方端点规范] 官方流从不携带 SSE 注释帧（`: ping`），
+        // 而 google-genai-sdk（Antigravity CLI / agy）将任何非 `data:` 行判为
+        // `invalid stream chunk` 并整轮判失败。此处改用与官方同形的空 candidates 续帧保活。
+        Bytes::from(
+            "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[]},\"index\":0}]}\n\n",
+        )
+    }
 
-        let json_part = line.trim_start_matches("data: ").trim();
+    fn process_line(&mut self, line: &str) -> Vec<Bytes> {
+        // 注释行 / 非数据行一律丢弃：官方端点不下发此类帧，
+        // 透传会让严格解析器（google-genai-sdk）判定流非法。
+        // 用 `data:` 前缀而非 `data: `，兼容上游省略空格的形式。
+        let Some(rest) = line.strip_prefix("data:") else {
+            return Vec::new();
+        };
+
+        let json_part = rest.trim();
         if json_part == "[DONE]" {
             return vec![Bytes::from("data: [DONE]\n\n")];
         }
