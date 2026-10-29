@@ -230,3 +230,62 @@ impl ProtocolStreamHandler for GeminiStreamHandler {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::proxy::pipeline::stream_lifecycle::ProtocolStreamHandler;
+
+    fn handler() -> GeminiStreamHandler {
+        GeminiStreamHandler::new(
+            None,
+            "sess".to_string(),
+            "gemini-3.8-flash".to_string(),
+            1,
+            "anchor".to_string(),
+            false,
+            None,
+            String::new(),
+            String::new(),
+        )
+    }
+
+    #[test]
+    fn heartbeat_frame_is_a_data_frame_not_an_sse_comment() {
+        let frame = handler().heartbeat_frame();
+        let text = String::from_utf8(frame.to_vec()).unwrap();
+        assert!(text.starts_with("data: "));
+        assert!(!text.contains(": ping"));
+        let json: Value =
+            serde_json::from_str(text.trim_start_matches("data: ").trim()).expect("valid json");
+        assert_eq!(
+            json["candidates"][0]["content"]["parts"],
+            serde_json::json!([])
+        );
+    }
+
+    #[test]
+    fn non_data_lines_are_dropped() {
+        let mut h = handler();
+        assert!(h.process_line(": ping").is_empty());
+        assert!(h.process_line("event: message").is_empty());
+        assert!(h.process_line("id: 1").is_empty());
+    }
+
+    #[test]
+    fn data_prefix_without_space_is_accepted() {
+        let mut h = handler();
+        let out = h.process_line(r#"data:{"candidates":[{"content":{"parts":[{"text":"hi"}]}}]}"#);
+        assert_eq!(out.len(), 1);
+        let text = String::from_utf8(out[0].to_vec()).unwrap();
+        assert!(text.contains("\"hi\""));
+    }
+
+    #[test]
+    fn done_sentinel_still_forwarded() {
+        let mut h = handler();
+        let out = h.process_line("data: [DONE]");
+        assert_eq!(out.len(), 1);
+        assert_eq!(&out[0][..], b"data: [DONE]\n\n");
+    }
+}
