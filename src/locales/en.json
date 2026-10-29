@@ -842,7 +842,7 @@
         "unknown_quota": "Unknown (Click to Refresh)",
         "forbidden": "Account Forbidden",
         "open_console": "Open Console",
-        "lightweight_mode": "Lightweight Mode (Release RAM)",
+        "lightweight_mode": "Lightweight",
         "pin_desc": "Pin to desktop (stay visible, do not hide on blur)",
         "unpin_desc": "Pinned (click to unpin, auto-hide on blur)"
     },

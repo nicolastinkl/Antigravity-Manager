@@ -834,7 +834,7 @@
         "no_account": "Sem Conta",
         "unknown_quota": "Desconhecido (Clique para Atualizar)",
         "forbidden": "Conta Proibida",
-        "lightweight_mode": "Modo Leve (Liberar memória ao fechar)",
+        "lightweight_mode": "Modo Leve",
         "open_console": "Abrir console",
         "pin_desc": "Fixar na área de trabalho (não ocultar ao perder o foco)",
         "unpin_desc": "Fixado (clique para desafixar, ocultação automática)"

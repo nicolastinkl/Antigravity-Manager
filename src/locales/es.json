@@ -821,7 +821,7 @@
         "no_account": "Sin Cuenta",
         "unknown_quota": "Desconocido (Clic para Actualizar)",
         "forbidden": "Cuenta Prohibida",
-        "lightweight_mode": "Modo Ligero (Liberar memoria al cerrar)",
+        "lightweight_mode": "Modo Ligero",
         "open_console": "Abrir consola",
         "pin_desc": "Fijar al escritorio (no ocultar al perder el foco)",
         "unpin_desc": "Fijado (haz clic para desfijar, ocultar automáticamente)"

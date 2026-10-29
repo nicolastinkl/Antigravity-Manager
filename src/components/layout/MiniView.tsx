@@ -628,7 +628,7 @@ export default function MiniView() {
         )}>
             {/* 1. 顶栏：macOS 风格分段 Tab 与快捷工具 */}
             <div
-                className="flex-none flex items-center justify-between pl-2 pr-3 py-1.5 bg-gray-50/80 dark:bg-white/[0.03] rounded-t-2xl border-b border-gray-100 dark:border-white/[0.06] select-none cursor-default"
+                className="flex-none flex items-center justify-between pl-2 pr-2.5 py-1.5 bg-gray-50/80 dark:bg-white/[0.03] rounded-t-2xl border-b border-gray-100 dark:border-white/[0.06] select-none cursor-default"
                 data-tauri-drag-region
                 onMouseDown={(e) => {
                     const target = e.target as HTMLElement;
@@ -642,7 +642,7 @@ export default function MiniView() {
             >
                 {/* 3 应用客户端 Tab + 全池胶囊 */}
                 <div
-                    className="flex items-center bg-black/[0.04] dark:bg-white/[0.07] p-0.5 rounded-xl gap-0.5"
+                    className="flex items-center bg-black/[0.04] dark:bg-white/[0.07] p-0.5 rounded-xl gap-0.5 shrink-0"
                     data-tauri-drag-region="false"
                     onMouseDown={(e) => e.stopPropagation()}
                 >
@@ -663,7 +663,7 @@ export default function MiniView() {
                                 }}
                                 title={tab.tooltip}
                                 className={clsx(
-                                    "relative flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] whitespace-nowrap shrink-0 transition-all cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:ring-0 select-none",
+                                    "relative flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[11px] whitespace-nowrap shrink-0 transition-all cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:ring-0 select-none",
                                     isActive
                                         ? "bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 font-bold shadow-xs border border-black/[0.06] dark:border-white/[0.1]"
                                         : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
@@ -690,7 +690,7 @@ export default function MiniView() {
 
                 {/* 居中透明拖拽区：按住可拖动整个悬浮窗 */}
                 <div
-                    className="flex-1 h-full min-w-[12px] cursor-move"
+                    className="flex-1 h-full min-w-[8px] cursor-move"
                     data-tauri-drag-region
                     onMouseDown={(e) => {
                         e.preventDefault();
@@ -836,7 +836,7 @@ export default function MiniView() {
                             </button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto space-y-1 pr-0.5 scrollbar-thin max-h-[200px]">
+                        <div className="flex-1 overflow-y-auto space-y-1 pr-0.5 scrollbar-thin max-h-[260px]">
                             {accounts.map((acc) => {
                                 const isCurrent = acc.id === displayedAccount?.id;
                                 const accTier = getAccountTier(acc);
@@ -1036,7 +1036,7 @@ export default function MiniView() {
 
                 {/* 3. 底部托盘综合控制栏：Lemon 经典布局（左侧微型轻量开关、中间打开控制台主按钮、右侧退出应用） */}
                 <div
-                    className="flex-none h-10 bg-gray-50/95 dark:bg-black/40 rounded-b-2xl flex items-center justify-between px-3 text-[11px] text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-white/[0.06] select-none cursor-default"
+                    className="flex-none h-11 bg-gray-50/95 dark:bg-black/40 rounded-b-2xl flex items-center justify-between px-3 text-[11px] text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-white/[0.06] select-none cursor-default"
                     data-tauri-drag-region
                     onMouseDown={(e) => {
                         const target = e.target as HTMLElement;
@@ -1048,10 +1048,10 @@ export default function MiniView() {
                         }
                     }}
                 >
-                    {/* 左侧：托盘轻量模式开关 (退出时释放内存) */}
+                    {/* 左侧：托盘轻量模式开关 */}
                     <div
                         onClick={handleToggleLightweight}
-                        className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+                        className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity shrink-0 whitespace-nowrap select-none"
                         title={t('settings.lightweight_mode_desc', '开启后退出或最小化到托盘将彻底释放 WebView 内存')}
                     >
                         <Feather size={12} className={clsx(config?.lightweight_mode ? "text-emerald-500" : "text-gray-400")} />
@@ -1060,7 +1060,7 @@ export default function MiniView() {
                         </span>
                         {/* 微型开关组件 */}
                         <div className={clsx(
-                            "w-6 h-3.5 rounded-full p-0.5 transition-colors relative flex items-center",
+                            "w-6 h-3.5 rounded-full p-0.5 transition-colors relative flex items-center shrink-0",
                             config?.lightweight_mode ? "bg-emerald-500" : "bg-gray-300 dark:bg-zinc-600"
                         )}>
                             <div className={clsx(
@@ -1073,7 +1073,7 @@ export default function MiniView() {
                     {/* 中间：打开主控制台核心按钮（Lemon 风格胶囊按钮） */}
                     <button
                         onClick={handleMaximize}
-                        className="flex items-center gap-1.5 px-3.5 py-1 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-800 dark:text-zinc-100 border border-gray-200/90 dark:border-white/10 shadow-xs transition-all active:scale-95 cursor-pointer"
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-800 dark:text-zinc-100 border border-gray-200/90 dark:border-white/10 shadow-xs transition-all active:scale-95 cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:ring-0 shrink-0"
                         title={t('tray.open_console', '打开主控制台')}
                     >
                         <Maximize2 size={12} className="text-blue-500" />
@@ -1083,7 +1083,7 @@ export default function MiniView() {
                     {/* 右侧：退出应用 */}
                     <button
                         onClick={handleQuitApp}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:ring-0 active:scale-95 shrink-0"
                         title={t('tray.quit', '退出应用')}
                     >
                         <Power size={13} />

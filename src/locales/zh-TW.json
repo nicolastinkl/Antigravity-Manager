@@ -816,7 +816,7 @@
         "no_account": "無帳號",
         "unknown_quota": "未知 (點選重新整理)",
         "forbidden": "帳號被封禁",
-        "lightweight_mode": "輕量模式 (退出時釋放記憶體)",
+        "lightweight_mode": "輕量模式",
         "open_console": "開啟主控制台",
         "pin_desc": "固定在桌面（點擊常駐桌面，不隨失焦收起）",
         "unpin_desc": "已固定常駐（點擊取消固定，失焦自動收起）"

@@ -821,7 +821,7 @@
         "no_account": "계정 없음",
         "unknown_quota": "알 수 없음 (클릭하여 새로고침)",
         "forbidden": "계정 금지됨",
-        "lightweight_mode": "경량 모드 (트레이 시 메모리 해제)",
+        "lightweight_mode": "경량 모드",
         "open_console": "콘솔 열기",
         "pin_desc": "바탕화면에 고정 (포커스를 잃어도 닫히지 않고 유지)",
         "unpin_desc": "고정됨 (클릭하여 고정 해제, 포커스를 잃으면 자동으로 닫힘)"

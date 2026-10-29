@@ -817,7 +817,7 @@
         "no_account": "Hesap Yok",
         "unknown_quota": "Bilinmiyor (Yenilemek için tıklayın)",
         "forbidden": "Hesap Yasaklı",
-        "lightweight_mode": "Hafif Mod (Tepsideyken belleği boşalt)",
+        "lightweight_mode": "Hafif Mod",
         "open_console": "Konsolu Aç",
         "pin_desc": "Masaüstüne sabitle (odak kaybedildiğinde gizleme)",
         "unpin_desc": "Sabitlendi (sabitlemeyi kaldırmak için tıkla, otomatik gizle)"

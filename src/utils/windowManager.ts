@@ -1,8 +1,8 @@
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { isTauri } from './env';
 
-export const MINI_MODE_WIDTH = 360;
-export const MINI_MODE_HEIGHT = 360;
+export const MINI_MODE_WIDTH = 384;
+export const MINI_MODE_HEIGHT = 420;
 
 /**
  * Enter mini view mode

@@ -836,7 +836,7 @@
         "unknown_quota": "未知 (点击刷新)",
         "forbidden": "账号被封禁",
         "open_console": "打开主控制台",
-        "lightweight_mode": "轻量模式 (退出时释放内存)",
+        "lightweight_mode": "轻量模式",
         "pin_desc": "固定在桌面（点击常驻桌面，不随失焦收起）",
         "unpin_desc": "已固定常驻（点击取消固定，失焦自动收起）"
     },

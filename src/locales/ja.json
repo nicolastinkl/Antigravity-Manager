@@ -821,7 +821,7 @@
         "no_account": "アカウントなし",
         "unknown_quota": "不明 (クリックして更新)",
         "forbidden": "アカウント使用不可",
-        "lightweight_mode": "軽量モード (トレイ時にメモリ解放)",
+        "lightweight_mode": "軽量モード",
         "open_console": "コンソールを開く",
         "pin_desc": "デスクトップに固定（クリックして常駐、フォーカス喪失時も非表示にしない）",
         "unpin_desc": "固定中（クリックして固定解除、フォーカス喪失時に自動収納）"

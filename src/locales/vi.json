@@ -817,7 +817,7 @@
         "no_account": "Không có Tài khoản",
         "unknown_quota": "Chưa rõ (Click để Làm mới)",
         "forbidden": "Tài khoản Bị chặn (403)",
-        "lightweight_mode": "Chế độ nhẹ (Giải phóng RAM khi thu nhỏ)",
+        "lightweight_mode": "Chế độ nhẹ",
         "open_console": "Mở bảng điều khiển",
         "pin_desc": "Ghim vào màn hình (không ẩn khi mất tiêu điểm)",
         "unpin_desc": "Đã ghim (nhấp để bỏ ghim, tự động ẩn khi mất tiêu điểm)"
